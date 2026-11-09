@@ -167,20 +167,25 @@ def worker_ifcopenshell(caminho, saida_csv):
     qto = Counter(q.Name or "(sem nome)" for q in m.by_type("IfcElementQuantity"))
     pset = Counter("Pset_" if (p.Name or "").startswith("Pset_") else "outro" for p in m.by_type("IfcPropertySet"))
 
+    import ifcopenshell.util.classification as ucl
+
     elementos = sel.filter_elements(m, "IfcElement")
+    # o código da referência mudou de nome entre os esquemas:
+    # IFC2X3 IfcClassificationReference.ItemReference -> IFC4 .Identification
+    cod = "classification.ItemReference" if m.schema == "IFC2X3" else "classification.Identification"
     exp = ifccsv.IfcCsv()
-    exp.export(m, elementos, ["class", "classification.Identification"],
+    exp.export(m, elementos, ["class", cod, "classification.Name"],
                output=saida_csv, format="csv", delimiter=";", null="-")
-    por_classe, classificados = Counter(), Counter()
+    # elementos por classe contados nas linhas exportadas pelo IfcCSV (conferidos depois com o by_type)
+    por_classe = Counter()
     with open(saida_csv, encoding="utf-8") as f:
         r = csv.reader(f, delimiter=";")
-        cab = next(r)
-        ic, ii = cab.index("class"), cab.index("classification.Identification")
+        ic = next(r).index("class")
         for linha in r:
-            k = linha[ic].upper()
-            por_classe[k] += 1
-            if linha[ii] not in ("-", "", "None"):
-                classificados[k] += 1
+            por_classe[linha[ic].upper()] += 1
+    # classificado = o IfcOpenShell encontra ao menos uma referência de classificação
+    # para o elemento (direta ou herdada do tipo); não depende do texto do CSV
+    classificados = Counter(e.is_a().upper() for e in elementos if ucl.get_references(e))
     return {"schema": m.schema, "contagem": cont, "sistemas_classificacao": sistemas,
             "conjuntos_quantidades": dict(qto), "conjuntos_propriedades": dict(pset),
             "ifccsv_por_classe": dict(por_classe), "ifccsv_classificados": dict(classificados)}
