@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "Se usar esta ferramenta, cite-a como abaixo."
+title: "inventario_ifc: inventário reprodutível de entidades IFC"
+abstract: "Conta as entidades de um conjunto de modelos IFC por disciplina, por dois métodos independentes (leitura do texto STEP e IfcOpenShell), exporta os elementos com o IfcCSV e gera tabelas em CSV e um visualizador HTML que também abre modelos IFC direto no navegador."
+type: software
+authors:
+  - family-names: "Rivoire"
+    given-names: "André Brum"
+version: "0.1.0"
+date-released: "2026-11-09"
+license: MIT
+repository-code: "https://github.com/abrivoire/inventario-ifc"
+keywords:
+  - IFC
+  - IfcOpenShell
+  - IfcCSV
+  - BIM
+  - IDS

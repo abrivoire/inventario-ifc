@@ -1,0 +1,11 @@
+{
+  "_descricao": "Copie para config_local.json e ajuste os caminhos. A ordem das disciplinas é a ordem das colunas nas saídas. 'mapa_local' guarda a ligação entre o código anônimo e o nome real de cada arquivo e não deve ser publicado.",
+  "disciplinas": [
+    {"codigo": "ARQ", "nome": "Arquitetura", "pasta": "C:/modelos/IFCS/Arquitetura"},
+    {"codigo": "INT", "nome": "Interiores", "pasta": "C:/modelos/IFCS/Interiores"},
+    {"codigo": "EST", "nome": "Estruturas de concreto", "pasta": "C:/modelos/IFCS/Estruturas"},
+    {"codigo": "MET", "nome": "Estrutura metálica", "pasta": "C:/modelos/IFCS/Metálica"}
+  ],
+  "saida": "C:/modelos/inventario_saida",
+  "mapa_local": "_local/mapa_modelos.csv"
+}

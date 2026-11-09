@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventário IFC</title>
+<!--
+  Inventário IFC - abre modelos IFC no navegador, conta as entidades por disciplina
+  e exporta os resultados em CSV. Também abre o resultado.json do inventario_ifc.py.
+  Ideia e concepção: André Brum Rivoire. Licença MIT.
+  Nada é enviado para a internet: os arquivos são lidos só no navegador.
+-->
+<style>
+  :root{
+    color-scheme: light dark;
+    --fundo:#F5F3EE; --sup:#FFFFFF; --sup2:#EEEBE3; --tinta:#1C1F24; --tinta2:#555B66; --tinta3:#8A8F99;
+    --linha:#DCD6C8; --linha2:#C6BFAD; --azul:#1D4E89; --azul-claro:#E6EDF6; --ok:#2E7D6E; --ok-claro:#E1F0EC;
+    --alerta:#A0521E; --alerta-claro:#F7EADF;
+    --g-elemento:#1D4E89; --g-propriedade:#2E7D6E; --g-material:#A66A1E; --g-relacao:#6F4E7C; --g-contexto:#7A7F8A; --g-geometria:#C9C3B4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --fundo:#14171C; --sup:#1B1F26; --sup2:#22262E; --tinta:#E8E5DD; --tinta2:#ABB0BA; --tinta3:#777D88;
+      --linha:#2C3039; --linha2:#3A404B; --azul:#86B2E3; --azul-claro:#1C2B3D; --ok:#7CC4B2; --ok-claro:#16261F;
+      --alerta:#E3A26B; --alerta-claro:#2E2014;
+      --g-elemento:#86B2E3; --g-propriedade:#7CC4B2; --g-material:#E0A855; --g-relacao:#C29ED0; --g-contexto:#9AA0AB; --g-geometria:#4A505B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --fundo:#14171C; --sup:#1B1F26; --sup2:#22262E; --tinta:#E8E5DD; --tinta2:#ABB0BA; --tinta3:#777D88;
+    --linha:#2C3039; --linha2:#3A404B; --azul:#86B2E3; --azul-claro:#1C2B3D; --ok:#7CC4B2; --ok-claro:#16261F;
+    --alerta:#E3A26B; --alerta-claro:#2E2014;
+    --g-elemento:#86B2E3; --g-propriedade:#7CC4B2; --g-material:#E0A855; --g-relacao:#C29ED0; --g-contexto:#9AA0AB; --g-geometria:#4A505B;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fundo);color:var(--tinta);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:0 16px}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 0 60px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:17px;margin:0 0 8px}
+  .sub{color:var(--tinta2);margin:0 0 18px;max-width:75ch}
+  .mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace}
+  .caixa{background:var(--sup);border:1px solid var(--linha);border-radius:8px;padding:16px;margin-bottom:16px}
+  .zonas{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin:12px 0}
+  .zona{border:2px dashed var(--linha2);border-radius:8px;padding:12px;background:var(--sup2);min-height:96px;cursor:pointer}
+  .zona.sobre{border-color:var(--azul);background:var(--azul-claro)}
+  .zona b{display:block}
+  .zona small{color:var(--tinta2)}
+  .zona input{display:none}
+  .botoes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  button,.botao{font:inherit;font-size:14px;padding:7px 14px;border-radius:6px;border:1px solid var(--linha2);background:var(--sup);color:var(--tinta);cursor:pointer}
+  button.primario{background:var(--azul);border-color:var(--azul);color:var(--sup);font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  label.botao input{display:none}
+  .barra{height:8px;background:var(--sup2);border-radius:4px;overflow:hidden;margin:10px 0 4px}
+  .barra i{display:block;height:100%;width:0;background:var(--azul);transition:width .2s}
+  .nota{color:var(--tinta2);font-size:13px}
+  .abas{display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid var(--linha2);margin:8px 0 12px}
+  .abas button{border:none;border-bottom:3px solid transparent;border-radius:0;background:none;padding:8px 12px;color:var(--tinta2)}
+  .abas button[aria-selected="true"]{color:var(--tinta);border-bottom-color:var(--azul);font-weight:600}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:16px}
+  .card{background:var(--sup);border:1px solid var(--linha);border-radius:8px;padding:10px 12px}
+  .card .r{font-size:12px;color:var(--tinta3);text-transform:uppercase;letter-spacing:.03em}
+  .card .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .card.ok{border-color:var(--ok);background:var(--ok-claro)}
+  .card.alerta{border-color:var(--alerta);background:var(--alerta-claro)}
+  .tabwrap{overflow-x:auto;background:var(--sup);border:1px solid var(--linha);border-radius:8px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{padding:6px 10px;border-bottom:1px solid var(--linha);text-align:left;white-space:nowrap}
+  th{background:var(--sup2);font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--tinta2);position:sticky;top:0}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  td.z{color:var(--tinta3)}
+  tr.tot td{font-weight:700;background:var(--sup2)}
+  .ferramentas{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+  .ferramentas input[type=search],.ferramentas select{font:inherit;font-size:14px;padding:6px 10px;border:1px solid var(--linha2);border-radius:6px;background:var(--sup);color:var(--tinta)}
+  .pilha{display:flex;height:14px;border-radius:3px;overflow:hidden;min-width:160px}
+  .pilha span{display:block;height:100%}
+  .legenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--tinta2);margin:8px 0}
+  .legenda i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Inventário IFC</h1>
+  <p class="sub">Conta as entidades de modelos IFC por disciplina e exporta as tabelas em CSV. Os arquivos são lidos só neste navegador; nada é enviado para a internet. Também abre o <span class="mono">resultado.json</span> gerado pela ferramenta em Python (<span class="mono">inventario_ifc.py</span>), que confere as contagens com o IfcOpenShell.</p>
+
+  <details class="caixa" id="painelEntrada" open>
+    <summary><b>Abrir modelos IFC</b></summary>
+    <p class="nota">Arraste os arquivos .ifc para a disciplina de cada um, ou clique na caixa para escolher. Também dá para abrir uma pasta que tenha uma subpasta por disciplina (Arquitetura, Interiores, Estruturas, Metálica). A contagem lê o texto do arquivo: o nome da entidade é o que está entre o primeiro <span class="mono">=</span> e o primeiro <span class="mono">(</span> de cada linha que começa com <span class="mono">#</span>.</p>
+    <div class="zonas" id="zonas"></div>
+    <div class="botoes">
+      <label class="botao">Abrir pasta com subpastas<input type="file" id="pasta" webkitdirectory multiple></label>
+      <button class="primario" id="analisar" disabled>Analisar</button>
+      <button id="limpar">Limpar</button>
+      <label class="nota"><input type="checkbox" id="anonimo" checked> usar códigos (ARQ-01...) no lugar dos nomes dos arquivos</label>
+    </div>
+    <div id="progresso" hidden>
+      <div class="barra"><i id="barra"></i></div>
+      <div class="nota" id="progTexto"></div>
+    </div>
+  </details>
+
+  <div class="caixa botoes">
+    <label class="botao">Carregar resultado.json<input type="file" id="arqJson" accept=".json,application/json"></label>
+    <button id="baixarJson" disabled>Baixar resultado.json</button>
+    <span class="nota" id="meta"></span>
+  </div>
+
+  <section id="resultado" hidden>
+    <div class="abas" id="abas" role="tablist"></div>
+    <div id="conteudo"></div>
+  </section>
+</div>
+
+<script id="categorias" type="application/json">{"rotulos":{"elemento":"Elementos e espaços","propriedade":"Propriedades e quantidades","material":"Materiais e classificação","relacao":"Relações","contexto":"Contexto do projeto","geometria":"Geometria e representação"},"ordem_dos_grupos":["elemento","propriedade","material","relacao","contexto","geometria"],"excecoes":{"IFCRELDEFINESBYPROPERTIES":"propriedade","IFCRELDEFINESBYTYPE":"propriedade","IFCRELASSOCIATESMATERIAL":"material","IFCRELASSOCIATESCLASSIFICATION":"material"},"relacao_prefixo":"IFCREL","elemento":["IFCWALL","IFCWALLSTANDARDCASE","IFCWALLTYPE","IFCSLAB","IFCSLABTYPE","IFCBEAM","IFCBEAMTYPE","IFCCOLUMN","IFCCOLUMNTYPE","IFCPLATE","IFCPLATETYPE","IFCMEMBER","IFCMEMBERTYPE","IFCDOOR","IFCWINDOW","IFCSTAIR","IFCSTAIRFLIGHT","IFCSTAIRFLIGHTTYPE","IFCRAMP","IFCRAMPFLIGHT","IFCRAMPFLIGHTTYPE","IFCROOF","IFCCOVERING","IFCCOVERINGTYPE","IFCCURTAINWALL","IFCCURTAINWALLTYPE","IFCRAILING","IFCRAILINGTYPE","IFCPILE","IFCFOOTING","IFCBUILDINGELEMENTPROXY","IFCBUILDINGELEMENTPROXYTYPE","IFCBUILDINGELEMENTPART","IFCOPENINGELEMENT","IFCFASTENER","IFCMECHANICALFASTENER","IFCFURNISHINGELEMENT","IFCFURNISHINGELEMENTTYPE","IFCFURNITURETYPE","IFCSPACE","IFCSPACETYPE","IFCTRANSPORTELEMENT","IFCTRANSPORTELEMENTTYPE","IFCVIRTUALELEMENT","IFCFLOWTERMINAL","IFCFLOWFITTING","IFCFLOWSEGMENT","IFCFLOWCONTROLLER","IFCDISTRIBUTIONPORT","IFCDISTRIBUTIONELEMENT","IFCDISTRIBUTIONELEMENTTYPE","IFCDISTRIBUTIONFLOWELEMENT","IFCENERGYCONVERSIONDEVICE","IFCPIPEFITTINGTYPE","IFCPIPESEGMENTTYPE","IFCDUCTFITTINGTYPE","IFCDUCTSEGMENTTYPE","IFCCABLECARRIERFITTINGTYPE","IFCCABLECARRIERSEGMENTTYPE","IFCSANITARYTERMINALTYPE","IFCLIGHTFIXTURETYPE","IFCAIRTERMINALTYPE","IFCUNITARYEQUIPMENTTYPE","IFCFIRESUPPRESSIONTERMINALTYPE","IFCELECTRICAPPLIANCETYPE","IFCDISTRIBUTIONCHAMBERELEMENTTYPE","IFCGASTERMINALTYPE","IFCSWITCHINGDEVICETYPE","IFCVALVETYPE","IFCSYSTEMFURNITUREELEMENTTYPE","IFCANNOTATION","IFCELEMENTASSEMBLY"],"propriedade":"^IFC(PROPERTYSET|PROPERTYSINGLEVALUE|PROPERTYENUMERATEDVALUE|PROPERTYLISTVALUE|ELEMENTQUANTITY|QUANTITY[A-Z]+|COMPLEXPROPERTY|PHYSICALCOMPLEXQUANTITY|SHAPEASPECT|DOORPANELPROPERTIES|DOORLININGPROPERTIES|DOORSTYLE|WINDOWLININGPROPERTIES|WINDOWPANELPROPERTIES|WINDOWSTYLE)$","material":"^IFC(CLASSIFICATION|CLASSIFICATIONREFERENCE|MATERIAL[A-Z]*)$","contexto":"^IFC(PROJECT|SITE|BUILDING|BUILDINGSTOREY|OWNERHISTORY|PERSON|PERSONANDORGANIZATION|ORGANIZATION|APPLICATION|POSTALADDRESS|TELECOMADDRESS|SIUNIT|DERIVEDUNIT|DERIVEDUNITELEMENT|CONVERSIONBASEDUNIT|MEASUREWITHUNIT|DIMENSIONALEXPONENTS|UNITASSIGNMENT|MONETARYUNIT|GEOMETRICREPRESENTATIONCONTEXT|GEOMETRICREPRESENTATIONSUBCONTEXT|TYPEPRODUCT|SYSTEM|GROUP|CALENDARDATE|ACTORROLE|GRID|GRIDAXIS)$","elementos_construidos":{"excluir_sufixos":["TYPE","STYLE"],"excluir":["IFCOPENINGELEMENT","IFCVIRTUALELEMENT","IFCSPACE","IFCDISTRIBUTIONPORT","IFCANNOTATION"]}}</script>
+<script id="dados" type="application/json">null</script>
+
+<!-- Leitor que roda em segundo plano (Web Worker): lê o arquivo em blocos, sem carregar tudo na memória -->
+<script id="leitor" type="text/plain">
+"use strict";
+function decodifica(s){
+  // escapes do STEP: \X2\hhhh...\X0\ (UTF-16), \X\hh (ISO 8859-1), \S\c (+128), \\ -> \
+  s = s.replace(/\\X2\\([0-9A-Fa-f]+)\\X0\\/g, (m, h) => { let o = ""; for (let i = 0; i + 4 <= h.length; i += 4) o += String.fromCharCode(parseInt(h.substr(i, 4), 16)); return o; });
+  s = s.replace(/\\X\\([0-9A-Fa-f]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+  s = s.replace(/\\S\\(.)/g, (m, c) => String.fromCharCode(c.charCodeAt(0) + 128));
+  return s.replace(/\\\\/g, "\\");
+}
+function argumento(s, k){
+  // devolve o k-ésimo argumento (0 = primeiro) do nível de topo de "a,b,(c,d),'e'..."
+  let i = 0, n = 0, prof = 0, ini = 0, aspas = false;
+  for (; i < s.length; i++){
+    const c = s[i];
+    if (aspas){ if (c === "'"){ if (s[i + 1] === "'") i++; else aspas = false; } continue; }
+    if (c === "'") aspas = true;
+    else if (c === "(") prof++;
+    else if (c === ")"){ if (prof === 0) break; prof--; }
+    else if (c === "," && prof === 0){ if (n === k) break; n++; ini = i + 1; }
+  }
+  if (n !== k) return "";
+  const v = s.slice(ini, i).trim();
+  if (v.startsWith("'") && v.endsWith("'")) return decodifica(v.slice(1, -1).replace(/''/g, "'"));
+  return v === "$" ? "" : v;
+}
+self.onmessage = async (e) => {
+  const { id, arquivo } = e.data;
+  const cont = new Map(), qto = new Map(), sistemas = [];
+  let esquema = "", psetP = 0, psetO = 0, lidos = 0, ultimo = 0;
+  function linha(t){
+    if (t.charCodeAt(0) !== 35){
+      if (!esquema && t.indexOf("FILE_SCHEMA") >= 0){ const m = /FILE_SCHEMA\s*\(\s*\(\s*'([^']+)'/.exec(t); if (m) esquema = m[1]; }
+      return;
+    }
+    const eq = t.indexOf("="), par = t.indexOf("(");
+    if (eq < 0 || par < 0 || par < eq) return;
+    const nome = t.slice(eq + 1, par).trim().toUpperCase();
+    cont.set(nome, (cont.get(nome) || 0) + 1);
+    if (nome === "IFCCLASSIFICATION") sistemas.push(argumento(t.slice(par + 1), 3));
+    else if (nome === "IFCELEMENTQUANTITY"){ const q = argumento(t.slice(par + 1), 2) || "(sem nome)"; qto.set(q, (qto.get(q) || 0) + 1); }
+    else if (nome === "IFCPROPERTYSET"){ if ((argumento(t.slice(par + 1), 2) || "").startsWith("Pset_")) psetP++; else psetO++; }
+  }
+  try {
+    const leitor = arquivo.stream().getReader();
+    const dec = new TextDecoder("iso-8859-1");
+    let resto = "";
+    for (;;){
+      const { done, value } = await leitor.read();
+      if (done) break;
+      lidos += value.length;
+      const txt = resto + dec.decode(value, { stream: true });
+      let ini = 0, fim;
+      while ((fim = txt.indexOf("\n", ini)) !== -1){ linha(txt.slice(ini, fim)); ini = fim + 1; }
+      resto = txt.slice(ini);
+      if (lidos - ultimo > 32 * 1024 * 1024){ ultimo = lidos; self.postMessage({ id, tipo: "prog", lidos }); }
+    }
+    resto += dec.decode();
+    if (resto) linha(resto);
+    self.postMessage({ id, tipo: "fim", lidos, esquema, contagem: Object.fromEntries(cont),
+      quantidades: Object.fromEntries(qto), sistemas, psetP, psetO });
+  } catch (err) {
+    self.postMessage({ id, tipo: "erro", mensagem: String(err && err.message || err) });
+  }
+};
+</script>
+
+<script>
+"use strict";
+(function(){
+  // ---------------- regras de agrupamento (iguais ao categorias.json) ----------------
+  const CAT = JSON.parse(document.getElementById("categorias").textContent);
+  const SET_EL = new Set(CAT.elemento);
+  const RE_PROP = new RegExp(CAT.propriedade), RE_MAT = new RegExp(CAT.material), RE_CTX = new RegExp(CAT.contexto);
+  const EC_SUF = CAT.elementos_construidos.excluir_sufixos, EC_EXC = new Set(CAT.elementos_construidos.excluir);
+  function grupo(n){
+    if (CAT.excecoes[n]) return CAT.excecoes[n];
+    if (n.startsWith(CAT.relacao_prefixo)) return "relacao";
+    if (SET_EL.has(n)) return "elemento";
+    if (RE_PROP.test(n)) return "propriedade";
+    if (RE_MAT.test(n)) return "material";
+    if (RE_CTX.test(n)) return "contexto";
+    return "geometria";
+  }
+  function construido(n){ return grupo(n) === "elemento" && !EC_SUF.some(s => n.endsWith(s)) && !EC_EXC.has(n); }
+
+  // ---------------- utilidades ----------------
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => (n === null || n === undefined || n === "") ? "—" : Number(n).toLocaleString("pt-BR");
+  const pct = (a, b) => b ? (100 * a / b).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : "";
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const semAcento = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function baixar(nome, conteudo, tipo){
+    const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+    const a = document.createElement("a"); a.href = url; a.download = nome; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  }
+  function csv(nome, cab, linhas){
+    const q = (v) => { v = (v === null || v === undefined) ? "" : (typeof v === "number" && !Number.isInteger(v)) ? String(v).replace(".", ",") : String(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    baixar(nome, "﻿" + [cab, ...linhas].map(l => l.map(q).join(";")).join("\r\n"), "text/csv;charset=utf-8");
+  }
+
+  // ---------------- disciplinas e zonas de entrada ----------------
+  const PADRAO = [["ARQ", "Arquitetura"], ["INT", "Interiores"], ["EST", "Estruturas"], ["MET", "Metálica"]];
+  const APELIDOS = { arquitetura: "ARQ", interiores: "INT", interior: "INT", estruturas: "EST", estrutura: "EST", "estruturas de concreto": "EST", metalica: "MET", "estrutura metalica": "MET", "estruturas metalicas": "MET" };
+  let disc = PADRAO.map(([codigo, nome]) => ({ codigo, nome, arquivos: [] }));
+
+  function desenhaZonas(){
+    $("zonas").innerHTML = disc.map((d, i) => {
+      const tam = d.arquivos.reduce((a, f) => a + f.size, 0);
+      return `<label class="zona" data-i="${i}"><b>${esc(d.nome)} <span class="mono">(${esc(d.codigo)})</span></b>
+        <small>${d.arquivos.length ? d.arquivos.length + " arquivo(s), " + (tam / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " MB" : "arraste ou clique para escolher"}</small>
+        <input type="file" multiple accept=".ifc"></label>`;
+    }).join("");
+    $("analisar").disabled = !disc.some(d => d.arquivos.length);
+    document.querySelectorAll(".zona").forEach(z => {
+      const i = +z.dataset.i;
+      z.querySelector("input").addEventListener("change", (e) => { adiciona(i, e.target.files); });
+      z.addEventListener("dragover", (e) => { e.preventDefault(); z.classList.add("sobre"); });
+      z.addEventListener("dragleave", () => z.classList.remove("sobre"));
+      z.addEventListener("drop", (e) => { e.preventDefault(); z.classList.remove("sobre"); adiciona(i, e.dataTransfer.files); });
+    });
+  }
+  function adiciona(i, lista){
+    for (const f of lista) if (/\.ifc$/i.test(f.name) && !disc[i].arquivos.some(g => g.name === f.name && g.size === f.size)) disc[i].arquivos.push(f);
+    desenhaZonas();
+  }
+  // o navegador lista e mede todos os arquivos da pasta antes de entregá-los à página;
+  // num drive de rede isso pode levar alguns segundos, então avisa logo no clique
+  $("pasta").addEventListener("click", () => {
+    $("progresso").hidden = false; $("barra").style.width = "0%";
+    $("progTexto").textContent = "o navegador está listando os arquivos da pasta (em drive de rede pode levar alguns segundos)…";
+  });
+  $("pasta").addEventListener("cancel", () => { $("progresso").hidden = true; });
+  $("pasta").addEventListener("change", (e) => {
+    $("progresso").hidden = true;
+    for (const f of e.target.files){
+      if (!/\.ifc$/i.test(f.name)) continue;
+      const partes = (f.webkitRelativePath || f.name).split("/");
+      const sub = partes.length > 2 ? partes[1] : "Sem disciplina";
+      const chave = semAcento(sub);
+      const codigo = APELIDOS[chave] || semAcento(sub).replace(/[^a-z]/g, "").slice(0, 3).toUpperCase() || "OUT";
+      let i = disc.findIndex(d => d.codigo === codigo);
+      if (i < 0){ disc.push({ codigo, nome: sub, arquivos: [] }); i = disc.length - 1; }
+      if (!disc[i].arquivos.some(g => g.name === f.name && g.size === f.size)) disc[i].arquivos.push(f);
+    }
+    e.target.value = "";
+    desenhaZonas();
+  });
+  $("limpar").addEventListener("click", () => { disc = PADRAO.map(([codigo, nome]) => ({ codigo, nome, arquivos: [] })); desenhaZonas(); });
+
+  // ---------------- análise no navegador ----------------
+  $("analisar").addEventListener("click", async () => {
+    const modelos = [];
+    disc.forEach(d => [...d.arquivos].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+      .forEach((f, k) => modelos.push({ codigo: d.codigo + "-" + String(k + 1).padStart(2, "0"), disciplina: d.codigo, arquivo: f.name, tamanho: f.size, file: f })));
+    const total = modelos.reduce((a, m) => a + m.tamanho, 0);
+    const lidos = new Map();
+    const t0 = performance.now();
+    $("analisar").disabled = true; $("progresso").hidden = false;
+    const url = URL.createObjectURL(new Blob([$("leitor").textContent], { type: "text/javascript" }));
+    // duas leituras ao mesmo tempo: mais do que isso disputa o disco/rede sem ganhar velocidade
+    const nw = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
+    const fila = [...modelos].sort((a, b) => b.tamanho - a.tamanho);
+    let feitos = 0, ultimaTela = 0;
+    const atualiza = (msg) => {
+      const agora = performance.now();
+      if (!msg && agora - ultimaTela < 250) return;  // no máximo 4 atualizações por segundo
+      ultimaTela = agora;
+      const l = [...lidos.values()].reduce((a, b) => a + b, 0);
+      $("barra").style.width = (total ? 100 * l / total : 0).toFixed(1) + "%";
+      $("progTexto").textContent = `${feitos} de ${modelos.length} arquivos · ${(l / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} de ${(total / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 0 })} MB · ${((performance.now() - t0) / 1000).toFixed(0)} s` + (msg ? " · " + msg : "");
+    };
+    await Promise.all(Array.from({ length: nw }, () => new Promise((fim) => {
+      const w = new Worker(url);
+      const proximo = () => {
+        const m = fila.shift();
+        if (!m){ w.terminate(); fim(); return; }
+        w.onmessage = (e) => {
+          const r = e.data;
+          if (r.tipo === "prog"){ lidos.set(m.codigo, r.lidos); atualiza(); return; }
+          if (r.tipo === "erro"){ m.erro = r.mensagem; } else { Object.assign(m, r); }
+          lidos.set(m.codigo, m.tamanho); feitos++; atualiza(m.erro ? "erro em " + m.arquivo : "arquivo " + feitos + " lido");
+          proximo();
+        };
+        w.postMessage({ id: m.codigo, arquivo: m.file });
+      };
+      proximo();
+    })));
+    URL.revokeObjectURL(url);
+    atualiza("concluído");
+    $("analisar").disabled = false;
+    mostra(montaResultado(modelos, (performance.now() - t0) / 1000));
+  });
+
+  function montaResultado(modelos, segundos){
+    const ativos = disc.filter(d => d.arquivos.length);
+    const D = ativos.map(d => d.codigo);
+    const T = {}; D.forEach(d => T[d] = new Map());
+    const qd = new Map();
+    for (const m of modelos){
+      if (!m.contagem) continue;
+      for (const [n, v] of Object.entries(m.contagem)) T[m.disciplina].set(n, (T[m.disciplina].get(n) || 0) + v);
+      for (const [n, v] of Object.entries(m.quantidades || {})){
+        const k = m.disciplina + "\u0000" + n;
+        const o = qd.get(k) || { disciplina: m.disciplina, nome: n, n: 0, modelos: 0 };
+        o.n += v; o.modelos++; qd.set(k, o);
+      }
+    }
+    const nomes = new Set(); D.forEach(d => T[d].forEach((v, n) => nomes.add(n)));
+    const entidades = [...nomes].map(n => ({ nome: n, grupo: grupo(n), construido: construido(n), n: Object.fromEntries(D.map(d => [d, T[d].get(n) || 0])) }));
+    return {
+      ferramenta: "Inventário IFC (navegador, método de texto)",
+      gerado_em: new Date().toLocaleString("pt-BR"),
+      versoes: { metodo: "texto, no navegador", segundos: Math.round(segundos) },
+      disciplinas: ativos.map(d => ({ codigo: d.codigo, nome: d.nome, modelos: modelos.filter(m => m.disciplina === d.codigo).length })),
+      grupos: CAT.ordem_dos_grupos.map(g => ({ chave: g, rotulo: CAT.rotulos[g] })),
+      modelos: modelos.map(m => ({ codigo: m.codigo, disciplina: m.disciplina, arquivo: m.arquivo, esquema: m.esquema || "", tamanho: m.tamanho, sha256: "", erro: m.erro || "", contagem: m.contagem || null })),
+      modelos_conferidos: 0,
+      entidades,
+      classificacao: modelos.filter(m => m.contagem).map(m => ({ modelo: m.codigo, disciplina: m.disciplina, relacoes: m.contagem.IFCRELASSOCIATESCLASSIFICATION || 0,
+        elementos: null, classificados: null, sistemas: [...new Set(m.sistemas || [])].join(" | "), psets_padrao: m.psetP || 0, psets_outros: m.psetO || 0 })),
+      quantidades: [...qd.values()].sort((a, b) => a.disciplina === b.disciplina ? b.n - a.n : D.indexOf(a.disciplina) - D.indexOf(b.disciplina)),
+      divergencias: []
+    };
+  }
+
+  // ---------------- carregar / baixar resultado.json ----------------
+  let R = null;
+  $("arqJson").addEventListener("change", async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { mostra(JSON.parse(await f.text())); } catch (err) { alert("Não consegui ler o JSON: " + err.message); }
+    e.target.value = "";
+  });
+  $("baixarJson").addEventListener("click", () => {
+    if (!R) return;
+    const copia = JSON.parse(JSON.stringify(R));
+    if ($("anonimo").checked) copia.modelos.forEach(m => delete m.arquivo);
+    baixar("resultado.json", JSON.stringify(copia), "application/json");
+  });
+  $("anonimo").addEventListener("change", () => { if (R) desenha(); });
+
+  // ---------------- apresentação ----------------
+  let aba = "resumo";
+  const ABAS = [["resumo", "Resumo"], ["elementos", "Elementos construídos"], ["entidades", "Entidades"], ["classificacao", "Classificação"],
+    ["quantidades", "Conjuntos de quantidades"], ["modelos", "Modelos"], ["pormodelo", "Por modelo"], ["conferencia", "Conferência"]];
+
+  function mostra(res){
+    R = res;
+    $("resultado").hidden = false;
+    $("baixarJson").disabled = false;
+    $("meta").textContent = `${R.ferramenta || ""} · gerado em ${R.gerado_em || "?"}` +
+      (R.versoes && R.versoes.ifcopenshell ? ` · IfcOpenShell ${R.versoes.ifcopenshell}` : "") +
+      (R.versoes && R.versoes.ifccsv ? ` · IfcCSV ${R.versoes.ifccsv}` : "");
+    desenha();
+  }
+  function desenha(){
+    const temPorModelo = R.modelos.some(m => m.contagem);
+    $("abas").innerHTML = ABAS.filter(([k]) => k !== "pormodelo" || temPorModelo)
+      .map(([k, r]) => `<button role="tab" data-k="${k}" aria-selected="${k === aba}">${r}</button>`).join("");
+    $("abas").querySelectorAll("button").forEach(b => b.onclick = () => { aba = b.dataset.k; desenha(); });
+    const f = { resumo, elementos, entidades: tabEntidades, classificacao, quantidades, modelos: tabModelos, pormodelo: porModelo, conferencia }[aba] || resumo;
+    $("conteudo").innerHTML = "";
+    f($("conteudo"));
+  }
+  const D = () => R.disciplinas.map(d => d.codigo);
+  const rot = (d) => { const x = R.disciplinas.find(y => y.codigo === d); return `${d} (${x ? x.modelos : "?"})`; };
+  const totE = (e) => D().reduce((a, d) => a + (e.n[d] || 0), 0);
+  const nomeModelo = (m) => (!$("anonimo").checked && m.arquivo) ? m.arquivo : "";
+
+  function tabela(el, titulo, cab, linhas, opc = {}){
+    const div = document.createElement("div");
+    div.innerHTML = `<div class="ferramentas"><h2 style="margin:0 auto 0 0">${esc(titulo)}</h2>${opc.extra || ""}<button>Baixar CSV</button></div>
+      ${opc.antes || ""}<div class="tabwrap"><table><thead><tr>${cab.map((c, i) => `<th class="${(opc.num || []).includes(i) ? "n" : ""}">${esc(c)}</th>`).join("")}</tr></thead>
+      <tbody>${linhas.slice(0, opc.limite || 5000).map(l => `<tr class="${l._tot ? "tot" : ""}">${l.map((v, i) => {
+        const num = (opc.num || []).includes(i);
+        return `<td class="${num ? "n" : ""}${num && (v === 0) ? " z" : ""}">${num && typeof v === "number" ? fmt(v) : esc(v === null || v === undefined ? "—" : v)}</td>`;
+      }).join("")}</tr>`).join("")}</tbody></table></div>
+      ${opc.limite && linhas.length > opc.limite ? `<p class="nota">Mostrando ${opc.limite} de ${linhas.length} linhas; o CSV traz todas.</p>` : ""}`;
+    div.querySelector(".ferramentas button").onclick = () => csv(opc.arquivo || "tabela.csv", opc.cabCsv || cab, opc.linhasCsv || linhas);
+    el.appendChild(div);
+    return div;
+  }
+
+  function grupos(){
+    const Ds = D(), tot = {};
+    Ds.forEach(d => tot[d] = R.entidades.reduce((a, e) => a + (e.n[d] || 0), 0));
+    const TT = Ds.reduce((a, d) => a + tot[d], 0);
+    const linhas = R.grupos.map(g => {
+      const v = {}; Ds.forEach(d => v[d] = R.entidades.filter(e => e.grupo === g.chave).reduce((a, e) => a + (e.n[d] || 0), 0));
+      const s = Ds.reduce((a, d) => a + v[d], 0);
+      return { g, v, s };
+    });
+    return { Ds, tot, TT, linhas };
+  }
+
+  function resumo(el){
+    const { Ds, tot, TT, linhas } = grupos();
+    const n = R.modelos.length, conf = R.modelos_conferidos || 0, div = (R.divergencias || []).length;
+    const geo = linhas.find(l => l.g.chave === "geometria"), dados = linhas.filter(l => l.g.chave === "propriedade" || l.g.chave === "material");
+    const sDados = dados.reduce((a, l) => a + l.s, 0);
+    el.insertAdjacentHTML("beforeend", `<div class="cards">
+      <div class="card"><div class="r">Modelos</div><div class="v">${fmt(n)}</div><div class="nota">${Ds.map(d => rot(d)).join(" · ")}</div></div>
+      <div class="card"><div class="r">Tipos de entidade</div><div class="v">${fmt(R.entidades.length)}</div></div>
+      <div class="card"><div class="r">Instâncias</div><div class="v">${fmt(TT)}</div></div>
+      <div class="card"><div class="r">Geometria</div><div class="v">${pct(geo ? geo.s : 0, TT)}%</div></div>
+      <div class="card"><div class="r">Classif., propr., quant. e material</div><div class="v">${pct(sDados, TT)}%</div></div>
+      <div class="card ${conf ? (div ? "alerta" : "ok") : ""}"><div class="r">Conferência IfcOpenShell</div><div class="v">${conf ? (div ? fmt(div) + " diverg." : "0 diverg.") : "—"}</div><div class="nota">${conf ? fmt(conf) + " de " + fmt(n) + " modelos conferidos" : "só pela ferramenta em Python"}</div></div>
+    </div>
+    <div class="legenda">${R.grupos.map(g => `<span><i style="background:var(--g-${g.chave})"></i>${esc(g.rotulo)}</span>`).join("")}</div>`);
+    const cab = ["Grupo"]; Ds.forEach(d => cab.push(rot(d) + " n", "%")); cab.push("Total n", "%");
+    const ln = linhas.map(l => { const r = [l.g.rotulo]; Ds.forEach(d => r.push(l.v[d], pct(l.v[d], tot[d]))); r.push(l.s, pct(l.s, TT)); return r; });
+    const t = ["Total"]; Ds.forEach(d => t.push(tot[d], "100,0")); t.push(TT, "100,0"); t._tot = true; ln.push(t);
+    const num = []; for (let i = 1; i < cab.length; i++) num.push(i);
+    const pilhas = `<div class="tabwrap" style="margin-bottom:12px"><table><tbody>${Ds.concat(["Total"]).map(d => {
+      const base = d === "Total" ? TT : tot[d];
+      return `<tr><td style="width:120px">${esc(d === "Total" ? "Total" : rot(d))}</td><td><div class="pilha">${linhas.map(l => {
+        const v = d === "Total" ? l.s : l.v[d]; return `<span title="${esc(l.g.rotulo)}: ${pct(v, base)}%" style="width:${base ? 100 * v / base : 0}%;background:var(--g-${l.g.chave})"></span>`;
+      }).join("")}</div></td></tr>`; }).join("")}</tbody></table></div>`;
+    tabela(el, "Instâncias por grupo de entidade", cab, ln, { num, arquivo: "grupos_por_disciplina.csv", antes: pilhas });
+  }
+
+  function elementos(el){
+    const Ds = D();
+    const ec = R.entidades.filter(e => e.construido).sort((a, b) => totE(b) - totE(a));
+    const tot = {}; Ds.forEach(d => tot[d] = ec.reduce((a, e) => a + (e.n[d] || 0), 0));
+    const TT = Ds.reduce((a, d) => a + tot[d], 0);
+    const px = R.entidades.find(e => e.nome === "IFCBUILDINGELEMENTPROXY") || { n: {} };
+    const ln = ec.map(e => [e.nome, ...Ds.map(d => e.n[d] || 0), totE(e)]);
+    const t = ["Total de elementos construídos", ...Ds.map(d => tot[d]), TT]; t._tot = true; ln.push(t);
+    ln.push(["Parcela de IFCBUILDINGELEMENTPROXY (%)", ...Ds.map(d => pct(px.n[d] || 0, tot[d])), pct(totE(px), TT)]);
+    tabela(el, `Elementos construídos (${ec.length} classes)`, ["Classe", ...Ds.map(rot), "Total"], ln,
+      { num: Ds.map((_, i) => i + 1).concat([Ds.length + 1]), arquivo: "elementos_construidos.csv",
+        antes: `<p class="nota">Ficam fora as entidades de tipo e de estilo, as aberturas, os espaços, os elementos virtuais, os pontos de conexão e as anotações (regra em categorias.json).</p>` });
+  }
+
+  function tabEntidades(el){
+    const Ds = D();
+    const div = tabela(el, "Entidades", ["Entidade", "Grupo", ...Ds.map(rot), "Total"], [], {
+      extra: `<input type="search" id="busca" placeholder="buscar (ex.: WALL, QUANTITY)"><select id="filtroGrupo"><option value="">todos os grupos</option>${R.grupos.map(g => `<option value="${g.chave}">${esc(g.rotulo)}</option>`).join("")}</select>` });
+    const rotG = Object.fromEntries(R.grupos.map(g => [g.chave, g.rotulo]));
+    const linhas = () => {
+      const q = (div.querySelector("#busca").value || "").trim().toUpperCase(), g = div.querySelector("#filtroGrupo").value;
+      return R.entidades.filter(e => (!g || e.grupo === g) && (!q || e.nome.includes(q)))
+        .sort((a, b) => R.grupos.findIndex(x => x.chave === a.grupo) - R.grupos.findIndex(x => x.chave === b.grupo) || totE(b) - totE(a))
+        .map(e => [e.nome, rotG[e.grupo], ...Ds.map(d => e.n[d] || 0), totE(e)]);
+    };
+    const pinta = () => {
+      const ln = linhas();
+      div.querySelector("tbody").innerHTML = ln.map(l => `<tr>${l.map((v, i) => i < 2 ? `<td>${esc(v)}</td>` : `<td class="n${v === 0 ? " z" : ""}">${fmt(v)}</td>`).join("")}</tr>`).join("");
+      div.querySelector(".ferramentas button").onclick = () => csv("entidades_por_disciplina.csv", ["entidade", "grupo", ...Ds.map(rot), "total"], ln);
+    };
+    div.querySelectorAll("th").forEach((th, i) => { if (i >= 2) th.classList.add("n"); });
+    div.querySelector("#busca").oninput = pinta; div.querySelector("#filtroGrupo").onchange = pinta;
+    pinta();
+  }
+
+  function classificacao(el){
+    const porM = Object.fromEntries(R.modelos.map(m => [m.codigo, m]));
+    const ln = R.classificacao.map(c => [c.modelo, nomeModelo(porM[c.modelo] || {}), c.disciplina, c.relacoes, c.elementos, c.classificados,
+      (c.elementos ? pct(c.classificados, c.elementos) : null), c.sistemas || "", c.psets_padrao, c.psets_outros]);
+    tabela(el, "Classificação e conjuntos de propriedades por modelo", ["Modelo", "Arquivo", "Disciplina", "Relações de classificação", "Elementos (IfcCSV)", "Classificados", "% classif.", "Sistemas declarados", "Psets Pset_", "Psets outros nomes"], ln,
+      { num: [3, 4, 5, 8, 9], arquivo: "classificacao_por_modelo.csv",
+        antes: R.classificacao.some(c => c.elementos === null) ? `<p class="nota">Elementos classificados só aparecem no resultado da ferramenta em Python (exportação pelo IfcCSV).</p>` : "" });
+  }
+
+  function quantidades(el){
+    const ln = (R.quantidades || []).map(q => [q.disciplina, q.nome, q.n, q.modelos, /^Qto_/.test(q.nome) ? "sim" : "não"]);
+    tabela(el, "Nomes dos conjuntos de quantidades (IfcElementQuantity)", ["Disciplina", "Nome do conjunto", "Ocorrências", "Modelos", "Padrão Qto_"], ln,
+      { num: [2, 3], arquivo: "conjuntos_quantidades_por_disciplina.csv" });
+  }
+
+  function tabModelos(el){
+    const ln = R.modelos.map(m => [m.codigo, nomeModelo(m), m.disciplina, m.esquema, +(m.tamanho / 1048576).toFixed(1), m.contagem ? Object.keys(m.contagem).length : null, m.sha256 || "", m.erro || ""]);
+    tabela(el, "Modelos analisados", ["Modelo", "Arquivo", "Disciplina", "Esquema", "MB", "Tipos", "SHA-256", "Erro"], ln,
+      { num: [4, 5], arquivo: "manifesto.csv" });
+  }
+
+  function porModelo(el){
+    const ln = [];
+    R.modelos.forEach(m => { if (m.contagem) Object.entries(m.contagem).sort((a, b) => b[1] - a[1]).forEach(([n, v]) => ln.push([m.codigo, nomeModelo(m), m.disciplina, n, R.grupos.find(g => g.chave === grupo(n)).rotulo, v])); });
+    tabela(el, "Entidades por modelo", ["Modelo", "Arquivo", "Disciplina", "Entidade", "Grupo", "Ocorrências"], ln, { num: [5], arquivo: "entidades_por_modelo.csv", limite: 1000 });
+  }
+
+  function conferencia(el){
+    const n = R.modelos.length, conf = R.modelos_conferidos || 0, dv = R.divergencias || [];
+    el.insertAdjacentHTML("beforeend", conf
+      ? `<div class="cards"><div class="card ${dv.length ? "alerta" : "ok"}"><div class="r">Modelos conferidos</div><div class="v">${fmt(conf)} de ${fmt(n)}</div></div>
+         <div class="card ${dv.length ? "alerta" : "ok"}"><div class="r">Divergências</div><div class="v">${fmt(dv.length)}</div></div></div>
+         <p class="nota">Cada modelo foi contado pelo texto e pelo IfcOpenShell (leitura pelo esquema); os elementos também pelo IfcCSV. Uma divergência é uma entidade com contagem diferente entre os métodos.</p>`
+      : `<p class="nota">Este resultado foi gerado no navegador, só pelo método de texto. A conferência com o IfcOpenShell e a exportação pelo IfcCSV são feitas pela ferramenta em Python (inventario_ifc.py).</p>`);
+    if (dv.length) tabela(el, "Divergências", ["Modelo", "Disciplina", "Entidade", "Método 1", "IfcOpenShell"], dv.map(d => [d.modelo, d.disciplina, d.entidade, d.n1, d.n2]), { num: [3, 4], arquivo: "conferencia_divergencias.csv" });
+  }
+
+  // ---------------- início ----------------
+  desenhaZonas();
+  const embutido = JSON.parse(document.getElementById("dados").textContent);
+  if (embutido){ $("painelEntrada").open = false; mostra(embutido); }
+})();
+</script>
+</body>
+</html>

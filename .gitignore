@@ -1,0 +1,4 @@
+# configuração e mapa com nomes reais dos arquivos: ficam só na máquina
+config_local.json
+_local/
+__pycache__/
